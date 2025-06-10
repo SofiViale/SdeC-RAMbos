@@ -65,3 +65,87 @@ Sus responsabilidades son:
 ### 4.1. Compilación y Carga del Módulo
 
 El módulo del kernel se compiló utilizando un `Makefile` que automatiza el proceso. Dado que el sistema de pruebas utiliza **Secure Boot**, fue necesario firmar el módulo `.ko` con una clave MOK previamente registrada en el sistema.
+
+El `Makefile` fue configurado para realizar la firma automáticamente después de la compilación:
+```makefile
+# Makefile final, corregido y robusto para compilación y firma automática
+
+# Nombre del objeto del módulo que queremos construir.
+obj-m += signal_driver.o
+
+# --- Configuración de la Firma Digital ---
+MOK_KEY_PRIV := MOK_TP5.priv
+MOK_KEY_PUB  := MOK_TP5.der
+SIGN_FILE := $(shell find /lib/modules/$(shell uname -r)/build/scripts -name sign-file)
+
+# --- Comandos Principales ---
+all:
+	@echo "==> [Paso 1/2] Compilando el módulo del kernel..."
+	@make -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
+	@echo "==> Compilación finalizada."
+	@echo "==> [Paso 2/2] Buscando clave para firmar el módulo..."
+	@if [ -f "$(MOK_KEY_PRIV)" ]; then \
+		echo "    -> ¡Éxito! Clave privada '$(MOK_KEY_PRIV)' encontrada."; \
+		echo "    -> Firmando '$(patsubst %.o,%.ko,$(obj-m))'..."; \
+		sudo $(SIGN_FILE) sha256 $(MOK_KEY_PRIV) $(MOK_KEY_PUB) $(patsubst %.o,%.ko,$(obj-m)); \
+		echo "==> ¡Módulo firmado exitosamente!"; \
+	else \
+		echo "    -> ¡ADVERTENCIA! No se encontró la clave privada '$(MOK_KEY_PRIV)'."; \
+	fi
+
+clean:
+	@echo "==> Limpiando archivos de compilación..."
+	@make -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+```
+
+La carga del módulo se realizó con los siguientes comandos, incluyendo el ajuste de permisos para el archivo de dispositivo:
+
+```
+# Cargar el módulo firmado en el kernel
+sudo insmod signal_driver.ko
+
+# Ajustar permisos para permitir el acceso desde la aplicación de usuario
+sudo chmod 666 /dev/signal_generator
+```
+
+### 4.2. Resultados de la Ejecución
+
+La aplicación de usuario se ejecutó exitosamente, logrando comunicarse con el driver y visualizar los datos.
+
+#### 4.2.1. Visualización de la Señal Cuadrada
+
+Al iniciar la aplicación, esta solicita por defecto la señal 1. El gráfico muestra correctamente la onda cuadrada alternando entre los valores 1 y -1, con un período de 4 segundos, tal como se programó en el driver.
+
+![Senal Cuadrada](TP5-Python/img/SenalCuadrada.png)
+
+    Figura 1: Visualización en tiempo real de la señal cuadrada generada por el CDD.
+
+#### 4.2.2. Visualización de la Señal Triangular
+
+Al presionar el botón "Señal 2 (Triangular)", la aplicación envía el comando correspondiente al driver. El gráfico se resetea y comienza a mostrar la nueva señal. Se puede observar la onda triangular que oscila entre 0 y 2, cumpliendo con la especificación.
+
+![Senal Trangular](TP5-Python/img/SenalTraingular.png)
+
+    Figura 2: Visualización de la señal triangular después de que el usuario solicitara el cambio.
+
+---
+
+## 5. Conclusiones
+
+El trabajo práctico se completó de manera exitosa, cumpliendo con todos los requisitos de la consigna. Se logró implementar un sistema funcional que demuestra la arquitectura de comunicación entre el kernel y el espacio de usuario a través de un driver de dispositivo de caracteres.
+
+El proyecto permitió afianzar conceptos clave de sistemas operativos, tales como:
+
+    La programación de módulos del kernel en C.
+
+    El manejo de temporizadores y la sincronización (`mutex`) en el kernel.
+
+    La creación de interfaces de dispositivo a través de `file_operations`.
+
+    La interacción de una aplicación de usuario con el kernel mediante llamadas al sistema (`open`, `read`, `write`).
+
+    Los desafíos de seguridad en sistemas modernos, como la necesidad de firmar módulos para `Secure Boot`.
+
+Este ejercicio práctico ha sido fundamental para comprender de manera aplicada la teoría de diseño de drivers y la estructura interna de un sistema operativo Linux.
+
+---
